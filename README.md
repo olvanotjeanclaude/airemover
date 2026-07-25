@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Image Metadata Cleaner
 
-## Getting Started
+A privacy-first image metadata cleaner that runs entirely in the browser. It removes EXIF, GPS,
+XMP, IPTC, C2PA Content Credentials and AI generation data without ever uploading a file, and
+without re-encoding the image.
 
-First, run the development server:
+## Commands
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev        # development server
+npm run build      # production build
+npm run start      # serve the production build
+npm run typecheck  # tsc --noEmit
+npm run lint       # eslint
+npm run test       # vitest run
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## What makes it lossless
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The default mode never touches pixels. Each container has a dedicated binary parser and writer:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Format | Approach |
+| --- | --- |
+| JPEG | Marker walk. Segments are classified individually; the entropy-coded scan, DQT, DHT and restart markers are copied verbatim. Progressive and 12-bit frames are supported. |
+| PNG | Chunk walk with CRC validation. Critical chunks are always kept, every written chunk gets a freshly computed CRC, and APNG animation chunks survive. |
+| WebP | RIFF rebuild. VP8/VP8L payloads are copied byte for byte and the VP8X flag byte is corrected for the chunks that were dropped. |
+| AVIF / HEIC | ISOBMFF box rewrite. Metadata items are removed from `iinf`, `iloc`, `iref` and `ipma`, `mdat` is compacted, and the absolute extent offsets are back-patched in a second pass. |
+| TIFF | The IFD tree is rebuilt from scratch. Strips and tiles are relocated and their offset tags rewritten, so the compressed pixel data is preserved exactly. |
 
-## Learn More
+Rebuild mode is the opt-in fallback: it decodes, redraws and re-encodes, and says so in the
+result. PNG output uses a bundled encoder with adaptive scanline filtering, so the compression
+level control is real rather than decorative.
 
-To learn more about Next.js, take a look at the following resources:
+## Architecture
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+  app/                      routes, metadata, SEO, PWA manifest
+  components/
+    ui/                     shadcn-style primitives on Radix
+    cleaner/                dropzone, queue, inspector, settings
+    landing/                marketing sections
+    theme/                  next-themes wiring
+  hooks/                    queue engine, downloads, paste, hydration
+  workers/                  worker entry point plus a pure message handler
+  lib/
+    image/
+      utils/                byte reader/writer, CRC-32, text decoding, format sniffing
+      exif/                 TIFF/EXIF reader, writer and selective tag filter
+      xmp/  iptc/  icc/     packet and record parsers
+      c2pa/                 JUMBF box reader
+      jpeg/ png/ webp/      per-format parse, inspect and clean
+      isobmff/ tiff/        per-format parse, inspect and clean
+      parser/               container dispatch plus the AI generator parsers
+      inspector/            builds the format-agnostic report
+      cleaner/              clean dispatch, rebuild mode, PNG encoder
+    worker/                 worker pool with crash recovery
+  store/                    Zustand stores for files and settings
+  types/  constants/
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The worker message handler is a pure function, which is why the worker contract is unit-tested
+without spinning up a real `Worker`.
 
-## Deploy on Vercel
+## Privacy guarantees
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- No upload endpoint exists. Files are read with `FileReader`, processed in a worker, and handed
+  back as a `Blob`.
+- The Content Security Policy in `next.config.ts` sets `connect-src 'self'` and
+  `form-action 'none'`, so outbound requests are blocked by the browser.
+- No analytics, telemetry, cookies or third-party scripts. Only the user's switch preferences are
+  stored, in `localStorage`.
+- The app keeps working with the network disconnected.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Tests
+
+93 tests cover the binary layer: container parsing, lossless integrity (the compressed stream is
+asserted byte-identical after cleaning), CRC-32 against the published check value, TIFF write
+round-trips, AVIF offset repair, selective GPS removal, every AI generator parser, and the worker
+message contract. Fixtures are hand-assembled from the format specifications rather than produced
+by the writers under test.

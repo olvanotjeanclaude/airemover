@@ -4,7 +4,7 @@ export const SITE = {
   tagline: "Remove Image Metadata Instantly",
   description:
     "Remove EXIF, GPS, XMP, AI metadata and C2PA from your images entirely inside your browser. No uploads, no tracking, 100% private.",
-  url: "https://imagemetadatacleaner.app",
+  url: "https://airemover.varotranaka.com",
   locale: "en_US",
   themeColor: {
     light: "#ffffff",

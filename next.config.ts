@@ -29,6 +29,8 @@ const CONTENT_SECURITY_POLICY = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Deployed as a PM2 process behind Apache, same as the other apps on the box.
+  output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {

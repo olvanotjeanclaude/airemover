@@ -7,7 +7,7 @@
 #
 # What it does:
 #   1. Pulls the repo (skip with --no-pull)
-#   2. Skips `npm ci` when package-lock.json is unchanged
+#   2. Skips `npm install` when package-lock.json is unchanged
 #   3. Skips the rebuild when HEAD didn't move (override with --force)
 #   4. Builds, then copies public/ + .next/static next to standalone/server.js
 #   5. Reloads the PM2 app and waits for the port to answer
@@ -70,6 +70,11 @@ if [ "$NO_PULL" -eq 1 ]; then
   info "skipping git pull (--no-pull)"
 else
   log "Pulling $APP_NAME"
+  # `npm install` below rewrites package-lock.json in place, leaving the tracked
+  # file dirty here. git pull --ff-only then refuses as soon as an incoming
+  # commit touches that lockfile, aborting on a file nobody edited on purpose.
+  # The lockfile in git is the source of truth, never npm's local rewrite.
+  git checkout -- package-lock.json 2>/dev/null || true
   git pull --ff-only 2>&1 | sed 's/^/    /'
 fi
 
@@ -77,14 +82,19 @@ HEAD_SHA="$(git rev-parse HEAD)"
 PREV_SHA="$(cat "$STATE_FILE" 2>/dev/null || echo "")"
 
 # ---------- 2. Dependencies ----------
+# `npm install`, not `npm ci`: the lockfile is generated on Windows, and the
+# wasm fallback packages (@tailwindcss/oxide-wasm32-wasi, @img/sharp-wasm32)
+# pull nested @emnapi/* deps that npm only records for the resolving platform.
+# `npm ci` rejects that as out-of-sync on Linux; `npm install` reconciles it.
+# Same choice the varotranaka stack's deploy.sh makes, for the same reason.
 LOCK_SHA="$(sha256sum package-lock.json | cut -d' ' -f1)"
 LOCK_STAMP="$ROOT/node_modules/.installed-lock-sha"
 if [ ! -d node_modules ] || [ "$(cat "$LOCK_STAMP" 2>/dev/null || echo)" != "$LOCK_SHA" ]; then
   log "Installing dependencies"
-  npm ci --no-audit --no-fund 2>&1 | sed 's/^/    /'
+  npm install --no-audit --no-fund --prefer-offline 2>&1 | sed 's/^/    /'
   echo "$LOCK_SHA" > "$LOCK_STAMP"
 else
-  info "dependencies unchanged, skipping npm ci"
+  info "dependencies unchanged, skipping install"
 fi
 
 # ---------- 3. Build ----------

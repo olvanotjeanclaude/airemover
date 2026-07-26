@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
@@ -16,7 +17,7 @@ export default function NotFound() {
           There is only one page here, and it does everything. Head back to the cleaner.
         </p>
         <Button className="mt-8" asChild>
-          <a href="/#cleaner">Go to the cleaner</a>
+          <Link href="/">Go to the cleaner</Link>
         </Button>
       </div>
     </main>

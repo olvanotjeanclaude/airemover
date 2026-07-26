@@ -5,11 +5,16 @@ import type { NextConfig } from "next";
  * network-facing surface at all. The headers below make that guarantee
  * enforceable by the browser rather than merely documented.
  */
+const isDev = process.env.NODE_ENV === "development";
+
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   // Next.js injects inline bootstrap scripts; `wasm-unsafe-eval` keeps the door
   // open for the browser's own codecs without allowing remote script.
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  // React's dev build calls `eval` to rebuild server stack traces in the
+  // browser, so `unsafe-eval` is added for `next dev` only. Production builds
+  // never need it.
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "font-src 'self' data:",

@@ -1,18 +1,14 @@
 import type { MetadataRoute } from "next";
 import { SITE } from "@/constants/site";
 
-/**
- * A single-page app, but the in-page sections are the things people link to and
- * search engines surface, so they are listed as anchors of the same document.
- */
-const SECTIONS = ["", "#cleaner", "#features", "#how-it-works", "#formats", "#privacy", "#faq"];
-
+/** The tool is the whole site: one page, nothing else to crawl. */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date();
-  return SECTIONS.map((section, index) => ({
-    url: `${SITE.url}/${section}`,
-    lastModified,
-    changeFrequency: "monthly",
-    priority: index === 0 ? 1 : 0.6,
-  }));
+  return [
+    {
+      url: SITE.url,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 1,
+    },
+  ];
 }
